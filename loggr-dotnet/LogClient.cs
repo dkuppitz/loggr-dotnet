@@ -1,9 +1,8 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Text;
-using System.Web;
-using System.Net;
+using System.Collections.Specialized;
 using System.Diagnostics;
+using System.Globalization;
+using System.Web;
 
 namespace Loggr
 {
@@ -294,102 +293,87 @@ namespace Loggr
 
         protected string CreateEventQuerystring(Event eventObj)
         {
-            string qs = "";
-            AppendQuerystringNameValue("text", eventObj.Text, ref qs, 500);
-            AppendQuerystringNameValue("link", eventObj.Link, ref qs, 200);
-            AppendQuerystringNameValueList("tags", eventObj.Tags, ref qs, 200);
-            AppendQuerystringNameValue("source", eventObj.Source, ref qs, 200);
-            AppendQuerystringNameValue("user", eventObj.User, ref qs, 200);
+            var parameters = new NameValueCollection
+            {
+                { "text", Cap(eventObj.Text, 500) },
+                { "link", Cap(eventObj.Link, 200) },
+                { "tags", Cap(eventObj.Tags.ToArray(), 200) },
+                { "source", Cap(eventObj.Source, 200) },
+                { "user", Cap(eventObj.User, 200) },
+            };
+
             if (eventObj.DataType == DataType.html)
             {
-                AppendQuerystringNameValue("data", "@html" + Environment.NewLine + eventObj.Data, ref qs, 5120);
+                parameters.Add("data", Cap(string.Concat("@html", Environment.NewLine, eventObj.Data), 5120));
             }
             else if (eventObj.DataType == DataType.json)
             {
-                AppendQuerystringNameValue("data", "@json" + Environment.NewLine + eventObj.Data, ref qs, 5120);
+                parameters.Add("data", Cap(string.Concat("@json", Environment.NewLine, eventObj.Data), 5120));
             }
             else
             {
-                AppendQuerystringNameValue("data", eventObj.Data, ref qs, 5120);
+                parameters.Add("data", Cap(eventObj.Data, 5120));
             }
+
             if (eventObj.Timestamp.HasValue)
             {
-                AppendQuerystringNameValueDate("timestamp", eventObj.Timestamp, ref qs, 30);
+                parameters.Add("timestamp", Cap(DateToMilliseconds(eventObj.Timestamp.Value), 30));
             }
+
             if (eventObj.Value.HasValue)
             {
-                AppendQuerystringNameValueObject("value", eventObj.Value.Value, ref qs, 30);
+                parameters.Add("value", Cap(eventObj.Value.Value, 30));
             }
+
             if (eventObj.Geo != null)
             {
-                AppendQuerystringNameValueObject("geo", eventObj.Geo, ref qs, 30);
+                parameters.Add("geo", Cap(eventObj.Geo, 30));
             }
-            return qs;
+
+            return ConvertToQueryString(parameters);
         }
 
         protected string CreateUserQuerystring(string username, string email, string page)
         {
-            string qs = "";
-            AppendQuerystringNameValue("user", username, ref qs, 100);
-            AppendQuerystringNameValue("email", email, ref qs, 100);
-            AppendQuerystringNameValue("page", page, ref qs, 100);
-
-            return qs;
+            return ConvertToQueryString(new NameValueCollection
+                {
+                    {"user", Cap(username, 100) },
+                    {"email", Cap(email, 100) },
+                    {"page", Cap(page, 100) }
+                });
         }
 
-        protected object AppendQuerystringNameValue(string name, string value, ref string querystring, int length)
-        {
-            if (string.IsNullOrEmpty(value))
-                return querystring;
-            if (querystring.Length > 0)
-                querystring += "&";
-            querystring += string.Format("{0}={1}", name, HttpUtility.UrlEncode(Cap(value, length)));
-            return querystring;
-        }
-
-        protected object AppendQuerystringNameValueObject(string name, object value, ref string querystring, int length)
-        {
-            if (querystring.Length > 0)
-                querystring += "&";
-            querystring += string.Format("{0}={1}", name, HttpUtility.UrlEncode(Cap(value.ToString(), length)));
-            return querystring;
-        }
-
-        protected object AppendQuerystringNameValueList(string name, List<string> value, ref string querystring, int length)
-        {
-            if (value.Count == 0)
-                return querystring;
-            if (querystring.Length > 0)
-                querystring += "&";
-            querystring += string.Format("{0}={1}", name, HttpUtility.UrlEncode(Cap(string.Join(" ", value.ToArray()), length)));
-            return querystring;
-        }
-
-        protected object AppendQuerystringNameValueDate(string name, DateTime? value, ref string querystring, int length)
-        {
-            if (!value.HasValue)
-                return querystring;
-            if (querystring.Length > 0)
-                querystring += "&";
-            querystring += string.Format("{0}={1}", name, HttpUtility.UrlEncode(Cap(DateToMilliseconds(value.Value).ToString(), length)));
-            return querystring;
-        }
-
-        protected double DateToMilliseconds(DateTime input)
+        protected static double DateToMilliseconds(DateTime input)
         {
             return (input - new DateTime(1970, 1, 1, 0, 0, 0)).TotalMilliseconds;
         }
 
-        protected string Cap(string input, int length)
+        protected static string Cap(string input, int length)
         {
             if (length < 0)
                 throw new ArgumentOutOfRangeException("Length", length, "Length must be > 0");
-            else if (length == 0 || input.Length == 0)
-                return "";
+            else if (length == 0 || input == null || input.Length == 0)
+                return string.Empty;
             else if (input.Length <= length)
                 return input;
             else
                 return input.Substring(0, length);
+        }
+
+        protected static string Cap(string[] input, int length)
+        {
+            return Cap(string.Join(" ", input), length);
+        }
+
+        protected static string Cap(double input, int length)
+        {
+            return Cap(input.ToString(CultureInfo.InvariantCulture), length);
+        }
+
+        protected static string ConvertToQueryString(NameValueCollection nvc)
+        {
+            return string.Join("&", Array.ConvertAll(nvc.AllKeys,
+                key => string.Format("{0}={1}", HttpUtility.UrlEncode(key), HttpUtility.UrlEncode(nvc[key]))));
         }
 
         #endregion
