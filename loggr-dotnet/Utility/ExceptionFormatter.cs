@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Data;
 using System.Diagnostics;
 using System.Globalization;
+using System.Text;
 using System.Web;
 
 namespace Loggr.Utility
@@ -60,69 +61,81 @@ namespace Loggr.Utility
 
         public static string Format(Exception ex, object traceObject)
         {
-            string res = "";
+            var res = new StringBuilder()
 
-            // send basic info
-            res += string.Format("<b>Exception</b>: {0}<br />", ex.Message);
-            res += string.Format("<b>Type</b>: {0}<br />", ex.GetType().ToString());
-            res += string.Format("<b>Machine</b>: {0}<br />", System.Environment.MachineName);
+                .AppendFormat("<b>Exception</b>: {0}<br />", ex.Message)
+                .AppendFormat("<b>Type</b>: {0}<br />", ex.GetType())
+                .AppendFormat("<b>Machine</b>: {0}<br />", System.Environment.MachineName)
+                .Append("<br />")
+                .Append(GetFormattedWebDetails(HttpContext.Current))
+                .Append(GetFormattedTraceObject(traceObject))
+                .Append("<br />")
+                .Append("<b>Stack Trace</b><br />")
+                .Append("<br />")
+                .Append(GetFormattedStackTrace(ex));
 
-            res += "<br />";
-
-            // see if we have web details
-            if (HttpContext.Current != null)
-            {
-                res += string.Format("<b>Request URL</b>: {0}<br />", HttpContext.Current.Request.Url.ToString());
-                res += string.Format("<b>Is Authenticated</b>: {0}<br />", (HttpContext.Current.User.Identity.IsAuthenticated ? "True" : "False"));
-                res += string.Format("<b>User</b>: {0}<br />", (HttpContext.Current.User.Identity.IsAuthenticated ? HttpContext.Current.User.Identity.Name : "anonymous"));
-                res += string.Format("<b>User host address</b>: {0}<br />", HttpContext.Current.Request.ServerVariables["REMOTE_ADDR"]);
-                res += string.Format("<b>Request Method</b>: {0}<br />", HttpContext.Current.Request.ServerVariables["REQUEST_METHOD"]);
-                res += string.Format("<b>User Agent</b>: {0}<br />", HttpContext.Current.Request.ServerVariables["HTTP_USER_AGENT"]);
-                res += string.Format("<b>Referer</b>: {0}<br />", HttpContext.Current.Request.ServerVariables["HTTP_REFERER"]);
-                res += string.Format("<b>Script Name</b>: {0}<br />", HttpContext.Current.Request.ServerVariables["SCRIPT_NAME"]);
-            }
-
-            if (traceObject != null)
-            {
-                res += "<br />";
-                res += "<b>Traced Object(s)</b><br />";
-                res += "<br />";
-                if (traceObject != null)
-                {
-                    res += ObjectDumper.DumpObject(traceObject, 1);
-                }
-                else
-                {
-                    res += "Not specified<br />";
-                }
-            }
-
-            res += "<br />";
-            res += "<b>Stack Trace</b><br />";
-            res += "<br />";
-
-            FormatStack(ex, ref res);
-
-            return res;
+            return res.ToString();
         }
 
-        protected static void FormatStack(Exception Ex, ref string Buffer)
+        private static string GetFormattedWebDetails(HttpContext ctx)
         {
-            if (Ex.InnerException != null)
+            if (ctx != null)
             {
-                FormatStack(Ex.InnerException, ref Buffer);
+                var res = new StringBuilder()
+
+                    .AppendFormat("<b>Request URL</b>: {0}<br />", ctx.Request.Url)
+                    .AppendFormat("<b>Is Authenticated</b>: {0}<br />", ctx.User.Identity.IsAuthenticated ? "True" : "False")
+                    .AppendFormat("<b>User</b>: {0}<br />", ctx.User.Identity.IsAuthenticated ? ctx.User.Identity.Name : "anonymous")
+                    .AppendFormat("<b>User host address</b>: {0}<br />", ctx.Request.ServerVariables["REMOTE_ADDR"])
+                    .AppendFormat("<b>Request Method</b>: {0}<br />", ctx.Request.ServerVariables["REQUEST_METHOD"])
+                    .AppendFormat("<b>User Agent</b>: {0}<br />", ctx.Request.ServerVariables["HTTP_USER_AGENT"])
+                    .AppendFormat("<b>Referer</b>: {0}<br />", ctx.Request.ServerVariables["HTTP_REFERER"])
+                    .AppendFormat("<b>Script Name</b>: {0}<br />", ctx.Request.ServerVariables["SCRIPT_NAME"]);
+
+                return res.ToString();
             }
-            Buffer += string.Format("[{0}: {1}]<br />", Ex.GetType().ToString(), Ex.Message);
-            if (Ex.StackTrace != null)
+            else return null;
+        }
+
+        private static string GetFormattedTraceObject(object traceObject)
+        {
+            if (traceObject != null)
             {
-                Buffer += Ex.StackTrace.Replace(Environment.NewLine, "<br />");
+                var res = new StringBuilder()
+
+                    .Append("<br />")
+                    .Append("<b>Traced Object(s)</b><br />")
+                    .Append("<br />")
+                    .Append(ObjectDumper.DumpObject(traceObject, 1));
+
+                return res.ToString();
+            }
+            else return null;
+        }
+
+        private static string GetFormattedStackTrace(Exception ex)
+        {
+            var res = new StringBuilder();
+
+            if (ex.InnerException != null)
+            {
+                res.Append(GetFormattedStackTrace(ex.InnerException));
+            }
+
+            res.AppendFormat("[{0}: {1}]<br />", ex.GetType(), ex.Message);
+
+            if (ex.StackTrace != null)
+            {
+                res.Append(HttpUtility.HtmlEncode(ex.StackTrace).Replace(Environment.NewLine, "<br />"));
             }
             else
             {
-                Buffer += "No stack trace";
+                res.Append("No stack trace");
             }
-            Buffer += "<br/>";
-            Buffer += "<br/>";
+
+            res.Append("<br/><br/>");
+
+            return res.ToString();
         }
     }
 }
